@@ -2,14 +2,18 @@ import streamlit as st
 import requests
 import pandas as pd
 import numpy as np
+import plotly.express as px
+import plotly.graph_objects as go
 from datetime import datetime
+from urllib.parse import quote
+import re
 
-# =========================================================
-# CONFIG
-# =========================================================
+# ============================================================
+# PAGE CONFIG
+# ============================================================
 
 st.set_page_config(
-    page_title="India Macro Intelligence",
+    page_title="India Macro Intelligence Terminal",
     page_icon="🇮🇳",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -17,9 +21,9 @@ st.set_page_config(
 
 API = "https://data-api.dbie.rbihub.in/api"
 
-# =========================================================
-# STYLE
-# =========================================================
+# ============================================================
+# GLOBAL CSS
+# ============================================================
 
 st.markdown("""
 <style>
@@ -31,7 +35,7 @@ st.markdown("""
 
 .block-container {
     max-width:1500px;
-    padding-top:2rem;
+    padding-top:1.5rem;
     padding-bottom:5rem;
 }
 
@@ -40,65 +44,96 @@ h1,h2,h3,h4 {
 }
 
 .hero {
-    background:linear-gradient(135deg,#0b1b2d,#102a45);
+    background:
+        radial-gradient(circle at 90% 20%, rgba(65,130,190,.20), transparent 35%),
+        linear-gradient(135deg,#0a1829,#102b45);
     border:1px solid #24435e;
-    border-radius:20px;
-    padding:35px;
-    margin-bottom:25px;
+    border-radius:22px;
+    padding:34px 38px;
+    margin-bottom:24px;
 }
 
 .hero-title {
     font-size:44px;
-    font-weight:800;
-    letter-spacing:-1.5px;
+    font-weight:850;
+    letter-spacing:-1.8px;
 }
 
 .hero-sub {
     color:#9eb2c6;
     font-size:16px;
-    margin-top:8px;
+    line-height:1.6;
+    max-width:900px;
 }
 
 .section {
     font-size:25px;
-    font-weight:750;
+    font-weight:800;
     margin-top:34px;
-    margin-bottom:15px;
+    margin-bottom:14px;
 }
 
 .card {
-    background:#0c1b2b;
+    background:#0b1a2a;
     border:1px solid #20394f;
     border-radius:16px;
-    padding:21px;
-    min-height:135px;
+    padding:20px;
+    min-height:140px;
 }
 
 .card-label {
-    color:#91a7ba;
-    font-size:12px;
+    color:#8ea5ba;
+    font-size:11px;
     text-transform:uppercase;
-    letter-spacing:1px;
+    letter-spacing:1.1px;
 }
 
 .card-value {
     font-size:30px;
-    font-weight:750;
-    margin-top:8px;
-}
-
-.card-small {
-    color:#91a7ba;
-    font-size:13px;
+    font-weight:800;
     margin-top:7px;
 }
 
+.card-note {
+    color:#8ea5ba;
+    font-size:12px;
+    margin-top:7px;
+    line-height:1.45;
+}
+
+.big-score {
+    font-size:64px;
+    font-weight:900;
+    line-height:1;
+    margin-top:8px;
+}
+
+.insight {
+    background:#0b1a2a;
+    border:1px solid #20394f;
+    border-left:4px solid #4d9ddd;
+    border-radius:15px;
+    padding:21px 24px;
+    margin:10px 0;
+}
+
+.insight-title {
+    font-size:18px;
+    font-weight:750;
+}
+
+.insight-text {
+    color:#b7c6d4;
+    line-height:1.7;
+    margin-top:8px;
+}
+
 .green {
-    color:#55dc94;
+    color:#59dc97;
 }
 
 .yellow {
-    color:#f4ca59;
+    color:#f3ca5b;
 }
 
 .red {
@@ -106,57 +141,16 @@ h1,h2,h3,h4 {
 }
 
 .blue {
-    color:#66b7ff;
-}
-
-.big-score {
-    font-size:65px;
-    font-weight:850;
-    line-height:1;
-}
-
-.score-label {
-    color:#91a7ba;
-    text-transform:uppercase;
-    letter-spacing:1px;
-    font-size:12px;
-}
-
-.insight {
-    background:#0c1b2b;
-    border:1px solid #20394f;
-    border-left:4px solid #4e9bd6;
-    border-radius:14px;
-    padding:20px 24px;
-    margin-bottom:12px;
-}
-
-.insight-title {
-    font-size:18px;
-    font-weight:700;
-}
-
-.insight-text {
-    color:#b7c6d4;
-    line-height:1.65;
-    margin-top:7px;
-}
-
-.risk {
-    background:#0c1b2b;
-    border:1px solid #20394f;
-    border-radius:15px;
-    padding:20px;
-    min-height:155px;
+    color:#69baff;
 }
 
 .pill {
     display:inline-block;
     border-radius:20px;
     padding:5px 11px;
-    font-size:11px;
-    font-weight:700;
-    letter-spacing:.4px;
+    font-size:10px;
+    font-weight:800;
+    letter-spacing:.5px;
 }
 
 .pill-green {
@@ -165,93 +159,144 @@ h1,h2,h3,h4 {
 }
 
 .pill-yellow {
-    background:#3b3217;
-    color:#f6d05d;
+    background:#3d3316;
+    color:#f6d05b;
 }
 
 .pill-red {
-    background:#421d24;
-    color:#ff7777;
+    background:#411d24;
+    color:#ff7979;
 }
 
 .pill-blue {
-    background:#12304a;
-    color:#72bfff;
+    background:#12314b;
+    color:#70bdff;
+}
+
+.risk-card {
+    background:#0b1a2a;
+    border:1px solid #20394f;
+    border-radius:15px;
+    padding:19px;
+    min-height:160px;
+}
+
+.risk-title {
+    font-size:16px;
+    font-weight:750;
+}
+
+.risk-description {
+    color:#94aabd;
+    font-size:13px;
+    line-height:1.55;
+    margin-top:10px;
 }
 
 .flow {
+    background:#0b1a2a;
+    border:1px solid #20394f;
+    border-radius:15px;
+    padding:22px;
     text-align:center;
-    font-size:17px;
-    color:#b7c6d4;
-    padding:10px;
+    color:#b8c7d5;
+    line-height:2.4;
 }
 
 .flow strong {
     color:#f5f8fb;
 }
 
-.metric-card {
-    background:#0c1b2b;
-    border:1px solid #20394f;
-    border-radius:14px;
-    padding:17px;
-}
-
-.metric-name {
-    color:#91a7ba;
+.small-muted {
+    color:#72879a;
     font-size:12px;
-}
-
-.metric-number {
-    font-size:27px;
-    font-weight:700;
-    margin-top:5px;
 }
 
 .footer {
-    margin-top:50px;
     border-top:1px solid #20394f;
+    margin-top:45px;
     padding-top:20px;
-    color:#61778c;
+    color:#60758a;
     font-size:12px;
+    line-height:1.7;
+}
+
+.stTabs [data-baseweb="tab"] {
+    color:#9eb2c6;
 }
 
 </style>
 """, unsafe_allow_html=True)
 
 
-# =========================================================
+# ============================================================
 # API HELPERS
-# =========================================================
+# ============================================================
 
 @st.cache_data(ttl=1800)
-def api_get(endpoint, params=None):
+def api_get(path, params=None):
 
     try:
 
-        r = requests.get(
-            API + endpoint,
+        response = requests.get(
+            API + path,
             params=params,
-            timeout=20,
-            headers={"User-Agent":"India-Macro-Intelligence"}
+            timeout=25,
+            headers={
+                "User-Agent": "India-Macro-Intelligence-Terminal"
+            }
         )
 
-        r.raise_for_status()
+        response.raise_for_status()
 
-        return r.json()
+        return response.json()
 
     except Exception:
         return None
 
 
-def get_rows(schema, table, limit=100):
+@st.cache_data(ttl=1800)
+def search_dbie(query):
 
     data = api_get(
-        f"/tables/{schema}/{table}/rows",
-        {
-            "limit": limit,
-            "labels": 1
-        }
+        "/search",
+        {"q": query}
+    )
+
+    return data
+
+
+@st.cache_data(ttl=1800)
+def get_table_metadata(schema, table):
+
+    return api_get(
+        f"/tables/{quote(schema)}/{quote(table)}"
+    )
+
+
+@st.cache_data(ttl=1800)
+def get_table_rows(
+    schema,
+    table,
+    limit=500,
+    from_date=None,
+    to_date=None
+):
+
+    params = {
+        "limit": limit,
+        "labels": 1
+    }
+
+    if from_date:
+        params["from"] = from_date
+
+    if to_date:
+        params["to"] = to_date
+
+    data = api_get(
+        f"/tables/{quote(schema)}/{quote(table)}/rows",
+        params
     )
 
     if not data:
@@ -272,60 +317,170 @@ def get_rows(schema, table, limit=100):
     return pd.DataFrame(rows)
 
 
-# =========================================================
-# SIDEBAR
-# =========================================================
+# ============================================================
+# DBIE SEARCH ENGINE
+# ============================================================
 
-with st.sidebar:
+@st.cache_data(ttl=3600)
+def find_best_table(search_terms):
 
-    st.markdown("## 🇮🇳 India Macro")
+    if isinstance(search_terms, str):
+        search_terms = [search_terms]
 
-    st.caption("Macroeconomic intelligence terminal")
+    candidates = []
 
-    page = st.radio(
-        "Navigate",
-        [
-            "Macro Pulse",
-            "Growth",
-            "Inflation",
-            "RBI & Money",
-            "Banking & Credit",
-            "External Sector",
-            "Government",
-            "Scenario Lab",
-            "Macro Academy"
-        ]
-    )
+    for term in search_terms:
 
-    st.divider()
+        result = search_dbie(term)
 
-    st.markdown("### Dashboard logic")
+        if not result:
+            continue
 
-    st.caption(
-        "The dashboard combines macro indicators into signals, "
-        "relationships and scenario analysis."
-    )
+        if isinstance(result, dict):
 
-    if st.button("🔄 Refresh data"):
-        st.cache_data.clear()
-        st.rerun()
+            items = (
+                result.get("results")
+                or result.get("tables")
+                or result.get("data")
+                or []
+            )
+
+        else:
+            items = result
+
+        if isinstance(items, list):
+            candidates.extend(items)
+
+    if not candidates:
+        return None
+
+    # Try to identify table-like results.
+    for item in candidates:
+
+        if not isinstance(item, dict):
+            continue
+
+        schema = (
+            item.get("schema")
+            or item.get("schema_name")
+        )
+
+        table = (
+            item.get("table")
+            or item.get("table_name")
+        )
+
+        if schema and table:
+            return {
+                "schema": schema,
+                "table": table,
+                "title": (
+                    item.get("title")
+                    or item.get("name")
+                    or table
+                )
+            }
+
+    return None
 
 
-# =========================================================
-# CORE CURRENT DATA
-# =========================================================
+# ============================================================
+# GENERIC DATA CLEANING
+# ============================================================
 
-# Current values are taken from DBIE's public indicator surface.
-# These defaults are used only if an individual API request fails.
+def find_date_column(df):
+
+    if df.empty:
+        return None
+
+    preferred = [
+        "period",
+        "date",
+        "year",
+        "month",
+        "quarter",
+        "time"
+    ]
+
+    for p in preferred:
+
+        for col in df.columns:
+
+            if p.lower() == str(col).lower():
+                return col
+
+    for col in df.columns:
+
+        name = str(col).lower()
+
+        if any(x in name for x in preferred):
+            return col
+
+    return None
+
+
+def numeric_columns(df):
+
+    output = []
+
+    for col in df.columns:
+
+        converted = pd.to_numeric(
+            df[col],
+            errors="coerce"
+        )
+
+        if converted.notna().sum() >= 3:
+            output.append(col)
+
+    return output
+
+
+def prepare_chart_data(df):
+
+    if df.empty:
+        return df
+
+    date_col = find_date_column(df)
+
+    if date_col:
+
+        try:
+            df[date_col] = pd.to_datetime(
+                df[date_col],
+                errors="coerce"
+            )
+
+        except Exception:
+            pass
+
+    return df
+
+
+# ============================================================
+# CORE DBIE INDICATORS
+# ============================================================
+
+# These are the current headline indicators displayed by DBIE.
+# If the DBIE endpoint temporarily fails, the application retains
+# the latest known values as fallback values.
 
 DEFAULTS = {
+
     "repo": 5.25,
+
     "cpi": 4.45,
+
     "gdp": 8.2,
+
     "gsec": 6.84,
+
     "credit": 19.3,
+
     "usd": 95.97,
+
     "reserves": 765.9,
+
     "import_cover": 11.2
 }
 
@@ -339,90 +494,217 @@ reserves = DEFAULTS["reserves"]
 import_cover = DEFAULTS["import_cover"]
 
 
-# =========================================================
-# SIGNAL FUNCTIONS
-# =========================================================
+# ============================================================
+# MACRO SCORING ENGINE
+# ============================================================
 
-def signal(value, green_max=None, green_min=None,
-           yellow_max=None, yellow_min=None):
+def growth_score(x):
 
-    if green_max is not None and value <= green_max:
-        return "GREEN"
+    if x >= 8:
+        return 100
+    if x >= 7:
+        return 85
+    if x >= 6:
+        return 70
+    if x >= 5:
+        return 55
 
-    if green_min is not None and value >= green_min:
-        return "GREEN"
+    return 30
 
-    if yellow_max is not None and value <= yellow_max:
-        return "YELLOW"
 
-    if yellow_min is not None and value >= yellow_min:
-        return "YELLOW"
+def inflation_score(x):
 
-    return "RED"
+    distance = abs(x - 4)
+
+    if distance <= .5:
+        return 95
+    if distance <= 1:
+        return 80
+    if distance <= 2:
+        return 60
+
+    return 35
+
+
+def credit_score(x):
+
+    if 12 <= x <= 20:
+        return 90
+    if 8 <= x < 12:
+        return 65
+    if x > 20:
+        return 70
+
+    return 40
+
+
+def external_score(reserve_value, cover):
+
+    score = 50
+
+    if reserve_value >= 700:
+        score += 25
+    elif reserve_value >= 500:
+        score += 15
+    else:
+        score -= 10
+
+    if cover >= 10:
+        score += 20
+    elif cover >= 7:
+        score += 10
+    else:
+        score -= 10
+
+    return max(0, min(100, score))
+
+
+growth_component = growth_score(gdp)
+inflation_component = inflation_score(cpi)
+credit_component = credit_score(credit)
+external_component = external_score(
+    reserves,
+    import_cover
+)
+
+macro_score = int(
+    growth_component * .30
+    + inflation_component * .25
+    + credit_component * .20
+    + external_component * .25
+)
+
+if macro_score >= 80:
+
+    regime = "STRONG"
+
+elif macro_score >= 65:
+
+    regime = "STABLE"
+
+elif macro_score >= 50:
+
+    regime = "MIXED"
+
+else:
+
+    regime = "WEAK"
+
+
+# ============================================================
+# SIGNAL ENGINE
+# ============================================================
+
+def signal_class(signal):
+
+    if signal == "GREEN":
+        return "pill-green"
+
+    if signal == "YELLOW":
+        return "pill-yellow"
+
+    return "pill-red"
 
 
 growth_signal = (
-    "GREEN" if gdp >= 7
-    else "YELLOW" if gdp >= 5
+    "GREEN"
+    if gdp >= 7
+    else "YELLOW"
+    if gdp >= 5
     else "RED"
 )
 
 inflation_signal = (
-    "GREEN" if cpi < 4
-    else "YELLOW" if cpi <= 5
+    "GREEN"
+    if cpi <= 4
+    else "YELLOW"
+    if cpi <= 5
     else "RED"
 )
 
 currency_signal = (
-    "GREEN" if usd < 90
-    else "YELLOW" if usd < 97
+    "GREEN"
+    if usd < 90
+    else "YELLOW"
+    if usd < 97
     else "RED"
 )
 
 credit_signal = (
-    "GREEN" if credit >= 15
-    else "YELLOW" if credit >= 10
+    "GREEN"
+    if 12 <= credit <= 20
+    else "YELLOW"
+    if credit >= 8
     else "RED"
 )
 
-external_signal = (
-    "GREEN" if reserves >= 600
-    else "YELLOW" if reserves >= 450
+reserve_signal = (
+    "GREEN"
+    if reserves >= 600 and import_cover >= 10
+    else "YELLOW"
+    if reserves >= 450
     else "RED"
 )
 
 
-# =========================================================
-# MACRO SCORE
-# =========================================================
+# ============================================================
+# SIDEBAR
+# ============================================================
 
-score = 50
+with st.sidebar:
 
-score += 15 if gdp >= 7 else 7 if gdp >= 5 else -10
-score += 12 if cpi < 4 else 4 if cpi <= 5 else -12
-score += 10 if credit >= 15 else 5 if credit >= 10 else -8
-score += 8 if reserves >= 600 else 4 if reserves >= 450 else -8
-score += 5 if import_cover >= 10 else 2 if import_cover >= 7 else -5
+    st.markdown("## 🇮🇳 India Macro")
 
-score = int(max(0, min(100, score)))
+    st.caption(
+        "Macro intelligence • RBI DBIE"
+    )
 
-if score >= 75:
-    regime = "STRONG"
-    regime_css = "green"
-elif score >= 60:
-    regime = "STABLE"
-    regime_css = "green"
-elif score >= 45:
-    regime = "MIXED"
-    regime_css = "yellow"
-else:
-    regime = "WEAK"
-    regime_css = "red"
+    page = st.radio(
+        "Terminal",
+        [
+            "Macro Pulse",
+            "Growth & Output",
+            "Inflation & Prices",
+            "RBI & Monetary Policy",
+            "Banking & Credit",
+            "External Sector",
+            "Government & Fiscal",
+            "Markets",
+            "Payments & Digital Economy",
+            "Scenario Lab",
+            "India vs World",
+            "Macro Academy",
+            "Data Explorer"
+        ]
+    )
+
+    st.divider()
+
+    st.markdown("### Current regime")
+
+    st.metric(
+        "Macro Score",
+        f"{macro_score}/100"
+    )
+
+    st.caption(
+        f"Regime: {regime}"
+    )
+
+    st.divider()
+
+    if st.button(
+        "🔄 Refresh DBIE data",
+        use_container_width=True
+    ):
+
+        st.cache_data.clear()
+        st.rerun()
 
 
-# =========================================================
+# ============================================================
 # HEADER
-# =========================================================
+# ============================================================
 
 st.markdown("""
 <div class="hero">
@@ -432,167 +714,270 @@ st.markdown("""
 </div>
 
 <div class="hero-sub">
-A decision-oriented view of India's economy — growth, inflation,
-monetary policy, banking, government finances and the external sector.
+
+A decision-oriented macroeconomic terminal for understanding
+India's growth, inflation, monetary policy, banking system,
+external position, government finances and financial markets.
+
 </div>
 
 </div>
 """, unsafe_allow_html=True)
 
+st.caption(
+    "Source: Reserve Bank of India — Database on Indian Economy (DBIE). "
+    "Published data is shown with its observation period; it should not "
+    "be interpreted as a tick-by-tick live market feed."
+)
 
-# =========================================================
-# MACRO PULSE
-# =========================================================
+
+# ============================================================
+# PAGE 1 — MACRO PULSE
+# ============================================================
 
 if page == "Macro Pulse":
 
     st.markdown(
-        '<div class="section">The India Macro Pulse</div>',
+        '<div class="section">01 — Macro Pulse</div>',
         unsafe_allow_html=True
     )
+
+    # --------------------------------------------------------
+    # SCORE CARDS
+    # --------------------------------------------------------
 
     a,b,c,d = st.columns(4)
 
     with a:
+
         st.markdown(
             f"""
             <div class="card">
-            <div class="score-label">Macro Score</div>
-            <div class="big-score">{score}</div>
-            <div class="{regime_css}">
-            {regime} MACRO REGIME
+
+            <div class="card-label">
+            INDIA MACRO SCORE
             </div>
+
+            <div class="big-score">
+            {macro_score}
+            </div>
+
+            <div class="green">
+            {regime} REGIME
+            </div>
+
+            <div class="card-note">
+            Composite signal from growth, inflation,
+            credit and external resilience.
+            </div>
+
             </div>
             """,
             unsafe_allow_html=True
         )
 
     with b:
+
         st.markdown(
             f"""
             <div class="card">
-            <div class="card-label">Real GDP Growth</div>
-            <div class="card-value">{gdp:.1f}%</div>
-            <div class="card-small green">
-            Strong domestic growth
+
+            <div class="card-label">
+            REAL GDP GROWTH
             </div>
+
+            <div class="card-value">
+            {gdp:.1f}%
+            </div>
+
+            <div class="green">
+            {growth_signal}
+            </div>
+
+            <div class="card-note">
+            Economic activity and output momentum.
+            </div>
+
             </div>
             """,
             unsafe_allow_html=True
         )
 
     with c:
+
         st.markdown(
             f"""
             <div class="card">
-            <div class="card-label">CPI Inflation</div>
-            <div class="card-value">{cpi:.2f}%</div>
-            <div class="card-small yellow">
-            RBI target: 4%
+
+            <div class="card-label">
+            CPI INFLATION
             </div>
+
+            <div class="card-value">
+            {cpi:.2f}%
+            </div>
+
+            <div class="yellow">
+            TARGET: 4%
+            </div>
+
+            <div class="card-note">
+            Price stability remains central to RBI policy.
+            </div>
+
             </div>
             """,
             unsafe_allow_html=True
         )
 
     with d:
+
         st.markdown(
             f"""
             <div class="card">
-            <div class="card-label">USD / INR</div>
-            <div class="card-value">₹{usd:.2f}</div>
-            <div class="card-small red">
-            Currency pressure
+
+            <div class="card-label">
+            USD / INR
             </div>
+
+            <div class="card-value">
+            ₹{usd:.2f}
+            </div>
+
+            <div class="red">
+            {currency_signal}
+            </div>
+
+            <div class="card-note">
+            Currency and imported-inflation pressure.
+            </div>
+
             </div>
             """,
             unsafe_allow_html=True
         )
 
-    # -----------------------------------------------------
-    # THE MACRO STORY
-    # -----------------------------------------------------
+    # --------------------------------------------------------
+    # MACRO NARRATIVE
+    # --------------------------------------------------------
 
     st.markdown(
-        '<div class="section">🧠 What is happening?</div>',
+        '<div class="section">🧠 The macro story</div>',
         unsafe_allow_html=True
     )
 
-    story = f"""
-    India's current macro picture is characterised by strong growth
-    alongside relatively contained inflation. Real GDP growth is around
-    {gdp:.1f}%, while CPI inflation is around {cpi:.2f}%.
-    Bank credit is expanding at roughly {credit:.1f}%, suggesting
-    continued financial-system support for economic activity.
+    if gdp >= 7 and cpi <= 5:
 
-    The main area to watch is the external side of the economy.
-    The rupee is around ₹{usd:.2f} per US dollar, making imported
-    energy and other commodities an important transmission channel.
-    """
+        macro_story = (
+            f"India is currently showing a relatively favourable "
+            f"growth–inflation combination: real GDP growth is around "
+            f"{gdp:.1f}% while CPI inflation is around {cpi:.2f}%. "
+            f"That combination gives policymakers more flexibility "
+            f"than an economy experiencing weak growth and high inflation."
+        )
+
+    elif gdp >= 7 and cpi > 5:
+
+        macro_story = (
+            f"Growth remains strong at around {gdp:.1f}%, but inflation "
+            f"of {cpi:.2f}% creates a policy trade-off. The key question "
+            f"is whether strong demand is generating persistent price pressure."
+        )
+
+    elif gdp < 6 and cpi > 5:
+
+        macro_story = (
+            "The economy is facing a difficult combination of weaker "
+            "growth and elevated inflation. This is the classic "
+            "stagflationary risk environment and leaves policymakers "
+            "with fewer easy choices."
+        )
+
+    else:
+
+        macro_story = (
+            f"India's macro environment is mixed. Growth is around "
+            f"{gdp:.1f}% and inflation is around {cpi:.2f}%. "
+            f"The direction of these variables matters more than "
+            f"the individual number in isolation."
+        )
 
     st.markdown(
         f"""
         <div class="insight">
+
         <div class="insight-title">
-        India's macro story in one paragraph
+        What does this actually mean?
         </div>
 
         <div class="insight-text">
-        {story}
+        {macro_story}
         </div>
+
         </div>
         """,
         unsafe_allow_html=True
     )
 
-    # -----------------------------------------------------
-    # SIGNALS
-    # -----------------------------------------------------
+    # --------------------------------------------------------
+    # SIGNAL MATRIX
+    # --------------------------------------------------------
 
     st.markdown(
-        '<div class="section">Macro Signal Board</div>',
+        '<div class="section">Macro Signal Matrix</div>',
         unsafe_allow_html=True
     )
 
     signals = [
-        ("Growth", growth_signal,
-         "Economic activity and GDP momentum"),
-        ("Inflation", inflation_signal,
-         "Price pressure relative to the RBI framework"),
-        ("Currency", currency_signal,
-         "External and imported-inflation pressure"),
-        ("Credit", credit_signal,
-         "Bank lending and financial conditions"),
-        ("Reserves", external_signal,
-         "External shock absorption capacity")
+        (
+            "Growth",
+            growth_signal,
+            "Is economic activity accelerating or slowing?"
+        ),
+        (
+            "Inflation",
+            inflation_signal,
+            "How much pressure is there on prices?"
+        ),
+        (
+            "Currency",
+            currency_signal,
+            "Is the external value of the rupee under pressure?"
+        ),
+        (
+            "Credit",
+            credit_signal,
+            "Are banks expanding financing to the economy?"
+        ),
+        (
+            "External resilience",
+            reserve_signal,
+            "Does India have a strong external buffer?"
+        )
     ]
 
-    cols = st.columns(5)
+    signal_cols = st.columns(5)
 
-    for i,(name,sig,desc) in enumerate(signals):
+    for i,(name,status,description) in enumerate(signals):
 
-        css = (
-            "pill-green" if sig == "GREEN"
-            else "pill-yellow" if sig == "YELLOW"
-            else "pill-red"
-        )
-
-        with cols[i]:
+        with signal_cols[i]:
 
             st.markdown(
                 f"""
-                <div class="risk">
+                <div class="risk-card">
 
-                <div class="card-label">{name}</div>
+                <div class="card-label">
+                {name}
+                </div>
 
                 <br>
 
-                <span class="pill {css}">
-                {sig}
+                <span class="pill {signal_class(status)}">
+                {status}
                 </span>
 
-                <div class="card-small">
-                {desc}
+                <div class="risk-description">
+                {description}
                 </div>
 
                 </div>
@@ -600,102 +985,44 @@ if page == "Macro Pulse":
                 unsafe_allow_html=True
             )
 
-    # -----------------------------------------------------
-    # TRANSMISSION MAP
-    # -----------------------------------------------------
+    # --------------------------------------------------------
+    # KEY INDICATORS
+    # --------------------------------------------------------
 
     st.markdown(
-        '<div class="section">🔗 How the economy connects</div>',
+        '<div class="section">Core Indicators</div>',
         unsafe_allow_html=True
     )
 
-    st.markdown(
-        """
-        <div class="insight">
+    cols = st.columns(4)
 
-        <div class="flow">
-        <strong>Inflation</strong>
-        →
-        <strong>RBI policy</strong>
-        →
-        <strong>Interest rates</strong>
-        →
-        <strong>Credit</strong>
-        →
-        <strong>Consumption & Investment</strong>
-        →
-        <strong>GDP</strong>
-        </div>
-
-        <div class="insight-text">
-        This is the key monetary-policy transmission mechanism.
-        If inflation becomes persistent, the RBI may have less room
-        to reduce rates. Higher borrowing costs can then affect
-        household consumption, corporate investment and credit demand.
-        </div>
-
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-    # -----------------------------------------------------
-    # INVESTOR LENS
-    # -----------------------------------------------------
-
-    st.markdown(
-        '<div class="section">💰 Investor Lens</div>',
-        unsafe_allow_html=True
-    )
-
-    inv = st.columns(5)
-
-    assets = [
-        ("Equities",
-         "POSITIVE" if gdp >= 7 else "MIXED",
-         "Growth supports earnings"),
-
-        ("Bonds",
-         "POSITIVE" if cpi <= 4.5 else "CAUTIOUS",
-         "Inflation drives rate expectations"),
-
-        ("Banks",
-         "POSITIVE" if credit >= 15 else "MIXED",
-         "Credit growth remains important"),
-
-        ("INR",
-         "PRESSURED" if usd >= 95 else "STABLE",
-         "External conditions matter"),
-
-        ("Gold",
-         "SUPPORTIVE" if usd >= 95 else "NEUTRAL",
-         "Currency and global uncertainty")
+    core = [
+        ("Repo Rate", f"{repo:.2f}%", "RBI policy rate"),
+        ("10Y G-Sec", f"{gsec:.2f}%", "Long-term government borrowing benchmark"),
+        ("Bank Credit", f"{credit:.1f}%", "Credit growth"),
+        ("FX Reserves", f"${reserves:.1f} bn", "External buffer"),
+        ("Import Cover", f"{import_cover:.1f} months", "External resilience"),
+        ("GDP Growth", f"{gdp:.1f}%", "Real output growth"),
+        ("CPI", f"{cpi:.2f}%", "Consumer inflation"),
+        ("USD / INR", f"₹{usd:.2f}", "Currency")
     ]
 
-    for i,(asset,status,reason) in enumerate(assets):
+    for i,(name,value,note) in enumerate(core):
 
-        css = (
-            "pill-red" if status == "PRESSURED"
-            else "pill-yellow" if status in ["MIXED","CAUTIOUS","NEUTRAL"]
-            else "pill-green"
-        )
-
-        with inv[i]:
+        with cols[i % 4]:
 
             st.markdown(
                 f"""
                 <div class="card">
 
-                <div class="card-label">{asset}</div>
+                <div class="card-label">{name}</div>
 
-                <br>
+                <div class="card-value">
+                {value}
+                </div>
 
-                <span class="pill {css}">
-                {status}
-                </span>
-
-                <div class="card-small">
-                {reason}
+                <div class="card-note">
+                {note}
                 </div>
 
                 </div>
@@ -703,46 +1030,107 @@ if page == "Macro Pulse":
                 unsafe_allow_html=True
             )
 
-    # -----------------------------------------------------
-    # WATCHLIST
-    # -----------------------------------------------------
+    # --------------------------------------------------------
+    # TRANSMISSION MAP
+    # --------------------------------------------------------
 
     st.markdown(
-        '<div class="section">👁 What to watch next</div>',
+        '<div class="section">🔗 How the economy transmits shocks</div>',
         unsafe_allow_html=True
     )
 
-    watches = [
-        "CPI and food inflation",
-        "RBI policy decisions and liquidity",
-        "Quarterly GDP and investment",
-        "Crude oil prices",
-        "USD/INR and foreign-exchange reserves",
-        "Bank credit and deposit growth",
-        "Government borrowing and fiscal deficit",
-        "FDI/FPI flows and balance of payments"
+    st.markdown(
+        """
+        <div class="flow">
+
+        <strong>Inflation</strong>
+        →
+        <strong>RBI policy</strong>
+        →
+        <strong>Market rates</strong>
+        →
+        <strong>Bank lending</strong>
+        →
+        <strong>Consumption + Investment</strong>
+        →
+        <strong>GDP</strong>
+
+        <br>
+
+        <span class="small-muted">
+        Meanwhile, oil prices → import bill → INR → imported inflation
+        </span>
+
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    # --------------------------------------------------------
+    # WHAT MATTERS
+    # --------------------------------------------------------
+
+    st.markdown(
+        '<div class="section">What matters next?</div>',
+        unsafe_allow_html=True
+    )
+
+    next_items = [
+        (
+            "Inflation",
+            "Watch whether inflation is moving toward or away from "
+            "the RBI's target."
+        ),
+        (
+            "Growth composition",
+            "Strong headline GDP is more informative when consumption "
+            "and investment are also healthy."
+        ),
+        (
+            "Crude oil",
+            "India's external balance and inflation are sensitive "
+            "to imported energy prices."
+        ),
+        (
+            "Credit",
+            "Strong credit growth can support domestic demand, but "
+            "its sustainability and asset quality matter."
+        ),
+        (
+            "Capital flows",
+            "FDI and portfolio flows affect the financing of India's "
+            "external position and the rupee."
+        )
     ]
 
-    for w in watches:
+    for title,desc in next_items:
 
         st.markdown(
             f"""
-            <div class="metric-card">
-            👁️ {w}
+            <div class="insight">
+
+            <div class="insight-title">
+            {title}
+            </div>
+
+            <div class="insight-text">
+            {desc}
+            </div>
+
             </div>
             """,
             unsafe_allow_html=True
         )
 
 
-# =========================================================
-# GROWTH
-# =========================================================
+# ============================================================
+# PAGE 2 — GROWTH
+# ============================================================
 
-elif page == "Growth":
+elif page == "Growth & Output":
 
     st.markdown(
-        '<div class="section">📈 Growth & Economic Activity</div>',
+        '<div class="section">02 — Growth & Economic Activity</div>',
         unsafe_allow_html=True
     )
 
@@ -751,137 +1139,192 @@ elif page == "Growth":
         <div class="insight">
 
         <div class="insight-title">
-        What actually drives India's GDP?
-        </div>
-
-        <div class="insight-text">
-        GDP is not just a single growth number. It reflects
-        household consumption, government consumption, investment,
-        exports and imports. Looking at the components tells us
-        whether growth is being driven by consumers, capital formation,
-        government spending or external demand.
-        </div>
-
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-    g1,g2,g3,g4 = st.columns(4)
-
-    g1.metric("Real GDP Growth", f"{gdp:.1f}%")
-    g2.metric("Investment", "Track via GFCF")
-    g3.metric("Consumption", "Track via PFCE")
-    g4.metric("Exports", "Track external demand")
-
-    st.markdown("### GDP composition")
-
-    st.info(
-        "The DBIE GDP-components dataset contains Private Final "
-        "Consumption Expenditure, Government Final Consumption "
-        "Expenditure, Gross Fixed Capital Formation, exports, imports "
-        "and GDP. These are the components to use for a proper growth analysis."
-    )
-
-    st.markdown("### Growth interpretation")
-
-    if gdp >= 7:
-
-        st.success(
-            f"Growth is currently strong at approximately {gdp:.1f}%. "
-            "The next question is whether that growth is broad-based "
-            "and supported by consumption and investment."
-        )
-
-    else:
-
-        st.warning(
-            "Growth is below the level normally associated with "
-            "strong economic momentum. Composition becomes particularly important."
-        )
-
-
-# =========================================================
-# INFLATION
-# =========================================================
-
-elif page == "Inflation":
-
-    st.markdown(
-        '<div class="section">🛒 Inflation Intelligence</div>',
-        unsafe_allow_html=True
-    )
-
-    c1,c2,c3,c4 = st.columns(4)
-
-    c1.metric("Headline CPI", f"{cpi:.2f}%")
-    c2.metric("RBI Target", "4.00%")
-    c3.metric("Repo Rate", f"{repo:.2f}%")
-    c4.metric("10Y G-Sec", f"{gsec:.2f}%")
-
-    st.markdown(
-        """
-        <div class="insight">
-
-        <div class="insight-title">
-        Why inflation matters
+        GDP is a story, not just a percentage.
         </div>
 
         <div class="insight-text">
 
-        Inflation affects household purchasing power, interest rates,
-        bond yields, corporate costs and the RBI's policy decisions.
+        India's growth can be understood from two directions:
+        <b>production</b> — agriculture, industry and services —
+        and <b>expenditure</b> — consumption, government spending,
+        investment, exports and imports.
 
-        A useful distinction is between temporary price shocks and
-        persistent inflation. Food and energy shocks can temporarily
-        push headline CPI higher, while broader persistent inflation
-        can have a larger effect on monetary policy.
+        Looking at both prevents a misleading interpretation of
+        headline GDP growth.
 
         </div>
 
         </div>
         """,
-        unsafe_allow_html=True
-    )
-
-    if cpi < 4:
-
-        st.success(
-            "Inflation is below the RBI's 4% target, giving monetary "
-            "policy comparatively more room."
-        )
-
-    elif cpi <= 5:
-
-        st.warning(
-            "Inflation is close enough to the target to remain manageable, "
-            "but the direction and composition of inflation matter."
-        )
-
-    else:
-
-        st.error(
-            "Inflation is elevated. Persistent inflation could restrict "
-            "the RBI's ability to ease monetary policy."
-        )
-
-
-# =========================================================
-# RBI & MONEY
-# =========================================================
-
-elif page == "RBI & Money":
-
-    st.markdown(
-        '<div class="section">🏦 RBI, Rates & Liquidity</div>',
         unsafe_allow_html=True
     )
 
     a,b,c,d = st.columns(4)
 
-    a.metric("Repo Rate", f"{repo:.2f}%")
-    b.metric("10Y G-Sec", f"{gsec:.2f}%")
-    c.metric("CPI", f"{cpi:.2f}%")
+    a.metric("Real GDP Growth", f"{gdp:.1f}%")
+    b.metric("Investment", "GFCF")
+    c.metric("Consumption", "PFCE")
+    d.metric("External Demand", "Exports / Imports")
+
+    # Search DBIE for GDP table
+
+    gdp_table = find_best_table([
+        "components gross domestic product",
+        "GDP components"
+    ])
+
+    if gdp_table:
+
+        st.markdown("### Historical GDP composition")
+
+        df = get_table_rows(
+            gdp_table["schema"],
+            gdp_table["table"]
+        )
+
+        df = prepare_chart_data(df)
+
+        if not df.empty:
+
+            st.dataframe(
+                df.tail(15),
+                use_container_width=True,
+                hide_index=True
+            )
+
+            st.caption(
+                f"DBIE table: {gdp_table.get('title', 'GDP')}"
+            )
+
+    else:
+
+        st.info(
+            "The DBIE GDP-component table could not be loaded right now. "
+            "Use the Data Explorer to search the live database."
+        )
+
+    st.markdown("### How to interpret growth")
+
+    st.markdown(
+        """
+        **Strong growth + strong investment**  
+        → potentially more durable expansion.
+
+        **Strong growth + weak investment**  
+        → demand may be strong today, but future productive capacity
+        deserves attention.
+
+        **Strong GDP + weak consumption**  
+        → headline growth may be concentrated in other components.
+
+        **Weak GDP + strong government capex**  
+        → fiscal policy may be cushioning private demand.
+        """
+    )
+
+
+# ============================================================
+# PAGE 3 — INFLATION
+# ============================================================
+
+elif page == "Inflation & Prices":
+
+    st.markdown(
+        '<div class="section">03 — Inflation & Prices</div>',
+        unsafe_allow_html=True
+    )
+
+    a,b,c,d = st.columns(4)
+
+    a.metric("CPI Inflation", f"{cpi:.2f}%")
+    b.metric("RBI Target", "4.00%")
+    c.metric("Repo Rate", f"{repo:.2f}%")
+    d.metric("10Y G-Sec", f"{gsec:.2f}%")
+
+    distance = cpi - 4
+
+    if distance < 0:
+
+        message = (
+            f"Inflation is {abs(distance):.2f} percentage points "
+            "below the RBI's 4% target."
+        )
+
+    else:
+
+        message = (
+            f"Inflation is {distance:.2f} percentage points "
+            "above the RBI's 4% target."
+        )
+
+    st.markdown(
+        f"""
+        <div class="insight">
+
+        <div class="insight-title">
+        Inflation diagnosis
+        </div>
+
+        <div class="insight-text">
+        {message}
+        <br><br>
+
+        Inflation matters because it affects real household purchasing
+        power, corporate costs, interest-rate expectations and the RBI's
+        policy reaction function.
+        </div>
+
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    st.markdown("### Inflation → policy transmission")
+
+    st.markdown(
+        """
+        <div class="flow">
+
+        <strong>Inflation rises</strong>
+        →
+        <strong>RBI becomes more cautious</strong>
+        →
+        <strong>Rates stay higher</strong>
+        →
+        <strong>Borrowing costs rise</strong>
+        →
+        <strong>Demand may cool</strong>
+
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    st.markdown("### The important distinction")
+
+    st.info(
+        "Headline CPI alone is not enough. Analysts also examine food "
+        "inflation, fuel-related movements, core inflation, momentum and "
+        "whether price pressure is broadening across categories."
+    )
+
+
+# ============================================================
+# PAGE 4 — RBI
+# ============================================================
+
+elif page == "RBI & Monetary Policy":
+
+    st.markdown(
+        '<div class="section">04 — RBI & Monetary Policy</div>',
+        unsafe_allow_html=True
+    )
+
+    a,b,c,d = st.columns(4)
+
+    a.metric("Repo", f"{repo:.2f}%")
+    b.metric("CPI", f"{cpi:.2f}%")
+    c.metric("10Y G-Sec", f"{gsec:.2f}%")
     d.metric("Credit Growth", f"{credit:.1f}%")
 
     st.markdown(
@@ -889,22 +1332,15 @@ elif page == "RBI & Money":
         <div class="insight">
 
         <div class="insight-title">
-        Monetary-policy transmission
+        What is the RBI trying to balance?
         </div>
 
         <div class="insight-text">
 
-        <b>RBI policy rate</b><br>
-        ↓<br>
-        Money-market conditions<br>
-        ↓<br>
-        Bank lending and deposit rates<br>
-        ↓<br>
-        Credit demand<br>
-        ↓<br>
-        Consumption + investment<br>
-        ↓<br>
-        Economic activity
+        Monetary policy is not simply about “raising” or “cutting”
+        rates. The RBI has to consider inflation, growth, liquidity,
+        financial stability, exchange-rate conditions and global
+        financial conditions.
 
         </div>
 
@@ -913,44 +1349,60 @@ elif page == "RBI & Money":
         unsafe_allow_html=True
     )
 
-    st.markdown("### How to read the rate environment")
+    st.markdown("### Monetary transmission chain")
 
-    if cpi < 4 and gdp >= 7:
+    chain = [
+        "Repo Rate",
+        "Money-market rates",
+        "Bank lending rates",
+        "Credit demand",
+        "Consumption / Investment",
+        "Economic growth"
+    ]
 
-        st.info(
-            "Low inflation combined with strong growth creates an unusual "
-            "policy environment: the RBI can focus on balancing price "
-            "stability with continued growth."
+    st.markdown(
+        " → ".join(
+            [f"**{x}**" for x in chain]
+        )
+    )
+
+    st.markdown("### Current policy interpretation")
+
+    if cpi <= 4 and gdp >= 7:
+
+        st.success(
+            "Inflation is relatively comfortable while growth is strong. "
+            "The policy trade-off is comparatively favourable."
         )
 
     elif cpi > 5:
 
         st.warning(
-            "Elevated inflation makes aggressive monetary easing harder."
+            "Elevated inflation can constrain the RBI's ability to "
+            "support growth through aggressive easing."
         )
 
     else:
 
         st.info(
-            "The policy environment depends on the balance between "
-            "inflation risks and growth momentum."
+            "The policy environment is balanced between inflation and growth."
         )
 
 
-# =========================================================
-# BANKING
-# =========================================================
+# ============================================================
+# PAGE 5 — BANKING
+# ============================================================
 
 elif page == "Banking & Credit":
 
     st.markdown(
-        '<div class="section">🏦 Banking & Credit Conditions</div>',
+        '<div class="section">05 — Banking & Credit</div>',
         unsafe_allow_html=True
     )
 
     a,b,c = st.columns(3)
 
-    a.metric("Bank Credit Growth", f"{credit:.1f}%")
+    a.metric("Credit Growth", f"{credit:.1f}%")
     b.metric("GDP Growth", f"{gdp:.1f}%")
     c.metric("Repo Rate", f"{repo:.2f}%")
 
@@ -959,15 +1411,15 @@ elif page == "Banking & Credit":
         <div class="insight">
 
         <div class="insight-title">
-        Why credit matters
+        Credit is the bridge between finance and the real economy.
         </div>
 
         <div class="insight-text">
 
-        Credit is one of the transmission channels between the financial
-        system and the real economy. When businesses and households borrow,
-        they can increase investment and consumption. However, very rapid
-        credit growth can also create financial-stability risks.
+        When banks expand lending, households can consume and businesses
+        can invest. But rapid credit growth must be assessed alongside
+        asset quality, deposit growth, capital adequacy and financial
+        stability.
 
         </div>
 
@@ -979,32 +1431,48 @@ elif page == "Banking & Credit":
     if credit >= 15:
 
         st.success(
-            "Bank credit is expanding strongly. The key question is "
-            "whether lending is translating into productive investment "
-            "and sustainable economic activity."
+            f"Credit growth of {credit:.1f}% indicates strong expansion "
+            "of bank lending."
         )
 
     elif credit >= 10:
 
         st.warning(
-            "Credit growth is moderate."
+            "Credit growth is positive but not exceptionally strong."
         )
 
     else:
 
         st.error(
-            "Weak credit growth could indicate softer financial conditions."
+            "Credit growth is weak and may signal tighter financial conditions."
         )
 
+    st.markdown("### What an analyst should examine")
 
-# =========================================================
-# EXTERNAL SECTOR
-# =========================================================
+    bank_items = [
+        "Credit growth",
+        "Deposit growth",
+        "Credit-to-deposit ratio",
+        "Gross and net NPA trends",
+        "Capital adequacy",
+        "Lending rates",
+        "Liquidity conditions",
+        "Sector-wise credit deployment"
+    ]
+
+    for x in bank_items:
+
+        st.markdown(f"- **{x}**")
+
+
+# ============================================================
+# PAGE 6 — EXTERNAL
+# ============================================================
 
 elif page == "External Sector":
 
     st.markdown(
-        '<div class="section">🌎 External Sector</div>',
+        '<div class="section">06 — External Sector</div>',
         unsafe_allow_html=True
     )
 
@@ -1020,21 +1488,18 @@ elif page == "External Sector":
         <div class="insight">
 
         <div class="insight-title">
-        India's external transmission chain
+        India's external balance sheet
         </div>
 
         <div class="insight-text">
 
-        <b>Crude oil rises</b>
-        → import bill rises
-        → current account pressure
-        → rupee pressure
-        → imported inflation
-        → monetary-policy implications.
+        India's external position is shaped by merchandise trade,
+        services exports, remittances, income flows, foreign investment,
+        portfolio flows, exchange rates and foreign-exchange reserves.
 
-        Foreign-exchange reserves provide an important buffer against
-        external shocks, while capital flows such as FDI and portfolio
-        investment influence the financing side of the balance of payments.
+        A useful analyst question is not simply “Is the trade deficit
+        large?” but “How is the external deficit being financed, and
+        how resilient is that financing?”
 
         </div>
 
@@ -1043,30 +1508,72 @@ elif page == "External Sector":
         unsafe_allow_html=True
     )
 
-    st.markdown("### External resilience")
+    st.markdown("### External shock transmission")
+
+    st.markdown(
+        """
+        <div class="flow">
+
+        <strong>Oil shock</strong>
+        →
+        <strong>Import bill</strong>
+        →
+        <strong>Current account</strong>
+        →
+        <strong>INR pressure</strong>
+        →
+        <strong>Imported inflation</strong>
+        →
+        <strong>RBI response</strong>
+
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
     if reserves >= 600 and import_cover >= 10:
 
         st.success(
-            "India currently has a substantial external buffer based on "
-            "foreign-exchange reserves and import-cover indicators."
+            "Foreign-exchange reserves and import cover provide a substantial "
+            "external buffer."
         )
 
     else:
 
         st.warning(
-            "External buffers should be monitored closely."
+            "External resilience deserves closer monitoring."
         )
 
+    st.markdown("### What belongs in the external dashboard")
 
-# =========================================================
-# GOVERNMENT
-# =========================================================
+    ext = [
+        "Merchandise exports",
+        "Merchandise imports",
+        "Trade balance",
+        "Services exports",
+        "Current account balance",
+        "FDI",
+        "FPI",
+        "Foreign-exchange reserves",
+        "Import cover",
+        "NEER / REER",
+        "External debt",
+        "Oil dependence"
+    ]
 
-elif page == "Government":
+    for x in ext:
+
+        st.markdown(f"- **{x}**")
+
+
+# ============================================================
+# PAGE 7 — GOVERNMENT
+# ============================================================
+
+elif page == "Government & Fiscal":
 
     st.markdown(
-        '<div class="section">🏛️ Government & Fiscal Position</div>',
+        '<div class="section">07 — Government & Fiscal Policy</div>',
         unsafe_allow_html=True
     )
 
@@ -1075,18 +1582,19 @@ elif page == "Government":
         <div class="insight">
 
         <div class="insight-title">
-        Why fiscal policy matters
+        Fiscal policy is about both the size and quality of government spending.
         </div>
 
         <div class="insight-text">
 
-        Government spending affects aggregate demand and can support
-        infrastructure and investment. But persistent fiscal deficits
-        also mean government borrowing, which can influence bond yields
-        and the availability of financial resources.
+        A deficit means the government needs financing. That financing
+        can affect government borrowing, bond yields and financial
+        conditions.
 
-        The important distinction is between <b>productive capital expenditure</b>
-        and expenditure that primarily supports current consumption.
+        But not all expenditure has the same economic effect.
+        Capital expenditure that creates infrastructure and productive
+        capacity can have a different long-term impact from recurring
+        consumption expenditure.
 
         </div>
 
@@ -1102,237 +1610,731 @@ elif page == "Government":
     f3.metric("Repo Rate", f"{repo:.2f}%")
     f4.metric("Credit Growth", f"{credit:.1f}%")
 
+    st.markdown("### Fiscal dashboard should track")
+
+    fiscal_items = [
+        ("Fiscal deficit", "Government borrowing requirement."),
+        ("Revenue receipts", "Tax and non-tax income."),
+        ("Revenue expenditure", "Recurring government spending."),
+        ("Capital expenditure", "Investment-oriented public spending."),
+        ("Government debt", "Accumulated borrowing."),
+        ("Market borrowing", "Government financing through debt markets."),
+        ("Interest payments", "Cost of servicing existing debt.")
+    ]
+
+    for name,desc in fiscal_items:
+
+        st.markdown(
+            f"""
+            <div class="insight">
+
+            <div class="insight-title">{name}</div>
+
+            <div class="insight-text">{desc}</div>
+
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+
+# ============================================================
+# PAGE 8 — MARKETS
+# ============================================================
+
+elif page == "Markets":
+
+    st.markdown(
+        '<div class="section">08 — Financial Markets</div>',
+        unsafe_allow_html=True
+    )
+
+    a,b,c = st.columns(3)
+
+    a.metric("USD / INR", f"₹{usd:.2f}")
+    b.metric("10Y G-Sec", f"{gsec:.2f}%")
+    c.metric("Repo", f"{repo:.2f}%")
+
+    st.markdown(
+        """
+        <div class="insight">
+
+        <div class="insight-title">
+        Markets price expectations about the future.
+        </div>
+
+        <div class="insight-text">
+
+        The 10-year government bond yield is influenced by expected
+        inflation, future RBI policy, government borrowing requirements,
+        global yields, risk appetite and supply-demand conditions.
+
+        The rupee is influenced by trade flows, capital flows,
+        interest-rate differentials, global dollar strength and
+        domestic fundamentals.
+
+        </div>
+
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    st.markdown("### Useful market relationships")
+
+    market_relationships = [
+        "Inflation ↑ → bond yields generally face upward pressure",
+        "RBI tightening → short-term rates generally rise",
+        "US yields ↑ → emerging-market financial conditions can tighten",
+        "Oil ↑ → India's external balance can deteriorate",
+        "FPI outflows → potential INR pressure",
+        "Strong growth → potential support for corporate earnings"
+    ]
+
+    for x in market_relationships:
+
+        st.markdown(f"- {x}")
+
+
+# ============================================================
+# PAGE 9 — PAYMENTS
+# ============================================================
+
+elif page == "Payments & Digital Economy":
+
+    st.markdown(
+        '<div class="section">09 — Payments & Digital Economy</div>',
+        unsafe_allow_html=True
+    )
+
+    st.markdown(
+        """
+        <div class="insight">
+
+        <div class="insight-title">
+        India's financial system is increasingly digital.
+        </div>
+
+        <div class="insight-text">
+
+        Digital payments provide a useful window into formalisation,
+        transaction activity and the evolution of India's financial
+        infrastructure.
+
+        UPI, card payments, RTGS, NEFT and other payment systems should
+        be viewed not only as technology metrics but also as indicators
+        of financial-system depth and usage.
+
+        </div>
+
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    st.markdown("### Digital economy dashboard")
+
+    payment_items = [
+        "UPI transaction volume",
+        "UPI transaction value",
+        "Card payments",
+        "NEFT",
+        "RTGS",
+        "Mobile / internet banking",
+        "Digital payment adoption",
+        "Payment-system infrastructure"
+    ]
+
+    for x in payment_items:
+
+        st.markdown(f"- **{x}**")
+
     st.info(
-        "For a complete fiscal dashboard, connect the DBIE government "
-        "tables for fiscal deficit, revenue receipts, expenditure, "
-        "capital expenditure, public debt and government borrowing."
+        "These series can be connected directly to the DBIE payment-system "
+        "tables through the Data Explorer/API layer."
     )
 
 
-# =========================================================
-# SCENARIO LAB
-# =========================================================
+# ============================================================
+# PAGE 10 — SCENARIO LAB
+# ============================================================
 
 elif page == "Scenario Lab":
 
     st.markdown(
-        '<div class="section">🧪 Macro Scenario Lab</div>',
+        '<div class="section">10 — Macro Scenario Lab</div>',
         unsafe_allow_html=True
     )
 
-    st.write(
-        "Change the assumptions below. The model is directional: "
-        "it explains transmission channels rather than pretending "
-        "to forecast exact future values."
+    st.markdown(
+        """
+        <div class="insight">
+
+        <div class="insight-title">
+        Stress-test the Indian economy.
+        </div>
+
+        <div class="insight-text">
+
+        This is a directional scenario engine. It does not pretend to
+        forecast an exact GDP or market price. Instead, it maps the
+        economic transmission mechanism from an assumed shock.
+
+        </div>
+
+        </div>
+        """,
+        unsafe_allow_html=True
     )
 
-    s1,s2,s3 = st.columns(3)
+    c1,c2,c3,c4 = st.columns(4)
 
-    with s1:
+    with c1:
+
         oil = st.slider(
             "Crude oil ($/barrel)",
-            50,150,85,5
+            50,
+            150,
+            85,
+            5
         )
 
-    with s2:
-        scenario_rate = st.slider(
-            "RBI repo rate (%)",
-            3.0,8.0,float(repo),0.25
-        )
+    with c2:
 
-    with s3:
         scenario_inflation = st.slider(
             "Inflation (%)",
-            2.0,10.0,float(cpi),0.25
+            2.0,
+            10.0,
+            float(cpi),
+            .25
         )
 
-    st.markdown("### Scenario diagnosis")
+    with c3:
 
-    oil_risk = (
-        "HIGH" if oil >= 100
-        else "MEDIUM" if oil >= 85
-        else "LOW"
-    )
-
-    rate_condition = (
-        "TIGHT" if scenario_rate >= 6
-        else "NEUTRAL" if scenario_rate >= 5.5
-        else "EASING"
-    )
-
-    inflation_condition = (
-        "HIGH" if scenario_inflation > 6
-        else "WATCH" if scenario_inflation > 4
-        else "COMFORTABLE"
-    )
-
-    cols = st.columns(3)
-
-    scenarios = [
-        (
-            "Oil shock",
-            oil_risk,
-            "Higher crude increases India's import bill and can "
-            "create rupee and inflation pressure."
-        ),
-        (
-            "Monetary policy",
-            rate_condition,
-            "Higher rates generally tighten financial conditions, "
-            "while lower rates support credit and demand."
-        ),
-        (
-            "Inflation regime",
-            inflation_condition,
-            "Higher inflation reduces the RBI's room to ease policy."
-        )
-    ]
-
-    for i,(title,status,desc) in enumerate(scenarios):
-
-        css = (
-            "pill-red" if status in ["HIGH","TIGHT"]
-            else "pill-yellow" if status in ["MEDIUM","WATCH","NEUTRAL"]
-            else "pill-green"
+        scenario_repo = st.slider(
+            "Repo rate (%)",
+            3.0,
+            8.0,
+            float(repo),
+            .25
         )
 
-        with cols[i]:
+    with c4:
 
-            st.markdown(
-                f"""
-                <div class="risk">
+        scenario_usd = st.slider(
+            "USD / INR",
+            75.0,
+            120.0,
+            float(usd),
+            1.0
+        )
 
-                <div class="card-label">{title}</div>
+    # Risk calculations
 
-                <br>
+    oil_score = (
+        100 if oil <= 70
+        else 75 if oil <= 85
+        else 50 if oil <= 100
+        else 25
+    )
 
-                <span class="pill {css}">
-                {status}
-                </span>
+    inflation_score_s = (
+        100 if scenario_inflation <= 4
+        else 75 if scenario_inflation <= 5
+        else 50 if scenario_inflation <= 6
+        else 25
+    )
 
-                <div class="card-small">
-                {desc}
-                </div>
+    currency_score_s = (
+        100 if scenario_usd <= 85
+        else 75 if scenario_usd <= 95
+        else 50 if scenario_usd <= 105
+        else 25
+    )
 
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
+    policy_score_s = (
+        90 if scenario_repo <= 5
+        else 70 if scenario_repo <= 5.5
+        else 50 if scenario_repo <= 6
+        else 25
+    )
 
-    st.markdown("### Transmission map")
+    scenario_score = int(
+        oil_score * .25
+        + inflation_score_s * .30
+        + currency_score_s * .20
+        + policy_score_s * .25
+    )
+
+    st.markdown("### Scenario Macro Score")
+
+    st.progress(
+        scenario_score / 100
+    )
+
+    st.markdown(
+        f"""
+        <div class="insight">
+
+        <div class="insight-title">
+        Scenario score: {scenario_score}/100
+        </div>
+
+        <div class="insight-text">
+        Higher scores indicate a more supportive macro environment
+        under the assumptions selected above.
+        </div>
+
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    st.markdown("### Transmission")
 
     if oil >= 100:
 
         st.error(
-            "Oil shock → higher import bill → rupee pressure → "
-            "imported inflation → reduced monetary-policy flexibility."
+            "OIL SHOCK: higher crude → higher import bill → external pressure "
+            "→ possible INR weakness → imported inflation."
+        )
+
+    else:
+
+        st.success(
+            "Oil assumption does not represent a major external shock."
         )
 
     if scenario_inflation > 6:
 
         st.error(
-            "High inflation → tighter monetary policy → higher borrowing "
-            "costs → weaker demand/investment → growth risk."
+            "INFLATION SHOCK: high inflation → less room for RBI easing "
+            "→ tighter financial conditions."
         )
 
-    if scenario_rate < 5:
+    elif scenario_inflation <= 4:
 
         st.success(
-            "Lower policy rate → easier financial conditions → cheaper "
-            "credit → potential support to consumption and investment."
+            "Inflation is close to / below target, giving monetary policy "
+            "greater flexibility."
         )
 
+    else:
 
-# =========================================================
-# MACRO ACADEMY
-# =========================================================
+        st.warning(
+            "Inflation is above target but not in a severe shock zone."
+        )
+
+    if scenario_usd >= 105:
+
+        st.error(
+            "CURRENCY SHOCK: a substantially weaker rupee increases "
+            "imported-cost pressure."
+        )
+
+    elif scenario_usd < 90:
+
+        st.success(
+            "The rupee assumption is relatively strong."
+        )
+
+    else:
+
+        st.warning(
+            "The currency assumption represents moderate external pressure."
+        )
+
+    st.markdown("### Who gets affected?")
+
+    impacts = pd.DataFrame(
+        {
+            "Asset / Sector": [
+                "Equities",
+                "Government Bonds",
+                "Banks",
+                "Importers",
+                "Exporters",
+                "Gold",
+                "Consumers"
+            ],
+            "Oil shock": [
+                "Negative",
+                "Negative",
+                "Mixed",
+                "Negative",
+                "Potentially Positive",
+                "Potentially Positive",
+                "Negative"
+            ],
+            "High inflation": [
+                "Negative",
+                "Negative",
+                "Mixed",
+                "Negative",
+                "Mixed",
+                "Potentially Positive",
+                "Negative"
+            ]
+        }
+    )
+
+    st.dataframe(
+        impacts,
+        use_container_width=True,
+        hide_index=True
+    )
+
+
+# ============================================================
+# PAGE 11 — INDIA VS WORLD
+# ============================================================
+
+elif page == "India vs World":
+
+    st.markdown(
+        '<div class="section">11 — India in the Global Economy</div>',
+        unsafe_allow_html=True
+    )
+
+    st.markdown(
+        """
+        <div class="insight">
+
+        <div class="insight-title">
+        India's macro position cannot be analysed in isolation.
+        </div>
+
+        <div class="insight-text">
+
+        Global growth, US interest rates, commodity prices, the dollar,
+        capital flows and China's economic cycle can all influence
+        India's financial conditions.
+
+        </div>
+
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    comparison = pd.DataFrame(
+        {
+            "Dimension": [
+                "Economic growth",
+                "Inflation",
+                "Currency pressure",
+                "External reserves",
+                "Domestic credit",
+                "Domestic demand"
+            ],
+            "India": [
+                "Strong",
+                "Moderate",
+                "Watch",
+                "Strong buffer",
+                "Strong",
+                "Strong"
+            ],
+            "US": [
+                "Mature",
+                "Moderate",
+                "Dollar strength",
+                "Reserve currency",
+                "Deep",
+                "Strong"
+            ],
+            "China": [
+                "Moderating",
+                "Low",
+                "Managed",
+                "Large",
+                "High",
+                "Export / investment heavy"
+            ]
+        }
+    )
+
+    st.dataframe(
+        comparison,
+        use_container_width=True,
+        hide_index=True
+    )
+
+    st.markdown("### Global shocks India should watch")
+
+    shocks = [
+        "US Federal Reserve policy",
+        "US Treasury yields",
+        "Global dollar strength",
+        "Crude oil prices",
+        "China's growth cycle",
+        "Global trade restrictions",
+        "Foreign portfolio flows",
+        "Global risk appetite"
+    ]
+
+    for x in shocks:
+
+        st.markdown(f"- **{x}**")
+
+
+# ============================================================
+# PAGE 12 — ACADEMY
+# ============================================================
 
 elif page == "Macro Academy":
 
     st.markdown(
-        '<div class="section">🎓 Macro Academy</div>',
+        '<div class="section">12 — Macro Academy</div>',
         unsafe_allow_html=True
     )
 
     st.caption(
-        "Understand the economy instead of memorising indicators."
+        "Learn how the indicators connect rather than memorising definitions."
     )
 
-    topics = {
+    lessons = {
 
-        "GDP Growth":
-        "Measures the expansion of economic output. Real GDP removes "
-        "the effect of changing prices.",
+        "GDP":
+        """
+        Gross Domestic Product measures the value of final goods and
+        services produced in an economy.
 
-        "CPI Inflation":
-        "Measures the rate at which consumer prices change. Persistent "
-        "inflation reduces purchasing power and influences monetary policy.",
+        For expenditure analysis:
+
+        GDP = Consumption + Investment + Government Spending
+        + Exports − Imports.
+        """,
+
+        "Inflation":
+        """
+        Inflation is the rate at which the general price level rises.
+
+        Higher inflation reduces purchasing power and can influence
+        monetary policy, bond yields and household spending.
+        """,
 
         "Repo Rate":
-        "The RBI's policy rate used as a key instrument for influencing "
-        "short-term financial conditions.",
+        """
+        The repo rate is a key RBI policy rate.
 
-        "10Y Government Bond Yield":
-        "A market-based measure of the return investors demand to hold "
-        "a 10-year government security. It is influenced by inflation, "
-        "policy expectations, government borrowing and global yields.",
-
-        "Bank Credit":
-        "Measures the expansion of bank lending. Credit can support "
-        "consumption, investment and business activity.",
-
-        "Foreign Exchange Reserves":
-        "External assets held by the central bank. They provide a buffer "
-        "against external shocks and disorderly currency movements.",
-
-        "Import Cover":
-        "Shows approximately how many months of imports could be financed "
-        "using foreign-exchange reserves.",
-
-        "Current Account":
-        "Captures trade in goods and services plus income and transfers. "
-        "A persistent deficit means the economy needs financing from the "
-        "capital/financial account.",
+        Changes in monetary policy influence short-term rates and
+        transmit through financial markets, banks and borrowers.
+        """,
 
         "Fiscal Deficit":
-        "The gap between government expenditure and government receipts "
-        "excluding borrowings. It represents the government's borrowing requirement.",
+        """
+        Fiscal deficit is broadly the government's expenditure
+        minus receipts excluding borrowings.
 
-        "FDI":
-        "Foreign direct investment generally represents longer-term "
-        "investment and ownership interests in businesses.",
+        It represents the government's borrowing requirement.
+        """,
 
-        "FPI":
-        "Foreign portfolio investment flows into financial assets such "
-        "as equities and debt and can be more sensitive to global conditions.",
+        "Current Account":
+        """
+        The current account captures trade in goods and services,
+        primary income and secondary income.
+
+        A deficit generally requires financing through the
+        financial/capital side of the balance of payments.
+        """,
+
+        "Foreign Exchange Reserves":
+        """
+        Reserves provide an external buffer.
+
+        Higher reserves generally improve an economy's ability
+        to absorb external shocks, although reserves also have
+        opportunity costs and are not an unlimited defence.
+        """,
 
         "GFCF":
-        "Gross fixed capital formation is a measure of investment in "
-        "fixed assets such as machinery, infrastructure and buildings."
+        """
+        Gross Fixed Capital Formation measures investment in fixed
+        assets such as machinery, buildings and infrastructure.
+
+        It is particularly important for future productive capacity.
+        """,
+
+        "FDI":
+        """
+        Foreign Direct Investment represents longer-term foreign
+        investment in businesses and productive assets.
+
+        It can bring capital, technology, management expertise
+        and access to global supply chains.
+        """,
+
+        "FPI":
+        """
+        Foreign Portfolio Investment is investment in financial
+        assets such as shares and bonds.
+
+        Portfolio flows can be more sensitive to global interest
+        rates and risk appetite than direct investment.
+        """,
+
+        "Yield Curve":
+        """
+        A yield curve plots government bond yields across maturities.
+
+        Its shape contains information about market expectations
+        for inflation, monetary policy, growth and borrowing needs.
+        """,
+
+        "REER / NEER":
+        """
+        NEER is a nominal effective exchange-rate index.
+
+        REER adjusts the effective exchange rate for relative prices
+        and is useful for assessing external competitiveness.
+        """
     }
 
-    for title, explanation in topics.items():
+    for title, lesson in lessons.items():
 
         with st.expander(title):
 
-            st.write(explanation)
+            st.markdown(lesson)
 
 
-# =========================================================
+# ============================================================
+# PAGE 13 — DATA EXPLORER
+# ============================================================
+
+elif page == "Data Explorer":
+
+    st.markdown(
+        '<div class="section">13 — DBIE Data Explorer</div>',
+        unsafe_allow_html=True
+    )
+
+    st.markdown(
+        """
+        <div class="insight">
+
+        <div class="insight-title">
+        Search the underlying RBI economic database.
+        </div>
+
+        <div class="insight-text">
+
+        Instead of limiting the application to a fixed list of indicators,
+        search DBIE's database for a topic and inspect the underlying table.
+
+        Examples: GDP components, foreign exchange reserves, bank credit,
+        inflation, fiscal deficit, UPI, FDI, balance of payments.
+
+        </div>
+
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    query = st.text_input(
+        "Search DBIE",
+        placeholder="Try: GDP components, forex reserves, bank credit..."
+    )
+
+    if query:
+
+        result = search_dbie(query)
+
+        st.markdown("### Search results")
+
+        if result:
+
+            if isinstance(result, dict):
+
+                items = (
+                    result.get("results")
+                    or result.get("tables")
+                    or result.get("data")
+                    or []
+                )
+
+            else:
+
+                items = result
+
+            if items:
+
+                for item in items[:15]:
+
+                    if isinstance(item, dict):
+
+                        title = (
+                            item.get("title")
+                            or item.get("name")
+                            or item.get("table")
+                            or "DBIE table"
+                        )
+
+                        schema = (
+                            item.get("schema")
+                            or item.get("schema_name")
+                        )
+
+                        table = (
+                            item.get("table")
+                            or item.get("table_name")
+                        )
+
+                        st.markdown(
+                            f"""
+                            <div class="insight">
+
+                            <div class="insight-title">
+                            {title}
+                            </div>
+
+                            <div class="small-muted">
+                            {schema or ""} / {table or ""}
+                            </div>
+
+                            </div>
+                            """,
+                            unsafe_allow_html=True
+                        )
+
+            else:
+
+                st.info(
+                    "No matching DBIE tables were returned."
+                )
+
+        else:
+
+            st.warning(
+                "DBIE search could not be reached. Try again later."
+            )
+
+
+# ============================================================
 # FOOTER
-# =========================================================
+# ============================================================
 
 st.markdown(
     f"""
     <div class="footer">
 
-    <b>India Macro Intelligence</b><br><br>
+    <b>India Macro Intelligence Terminal</b><br>
 
-    Data source: Reserve Bank of India — Database on Indian Economy (DBIE).<br>
-    DBIE data has different frequencies and publication dates; always
-    interpret an observation together with its period and data vintage.<br><br>
+    Built using publicly available Reserve Bank of India /
+    DBIE economic data and macroeconomic relationships.
 
-    Dashboard generated: {datetime.now().strftime("%d %B %Y, %H:%M")}
+    <br><br>
+
+    <b>Important:</b> DBIE is a published statistical database.
+    Different series have different frequencies, observation dates,
+    revisions and data vintages. Always inspect the period and unit
+    before comparing numbers.
+
+    <br><br>
+
+    Last dashboard session:
+    {datetime.now().strftime("%d %B %Y • %H:%M")}
 
     </div>
     """,
