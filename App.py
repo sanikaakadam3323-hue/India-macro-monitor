@@ -86,11 +86,16 @@ with st.sidebar:
 RBI_API = "https://data-api.dbie.rbihub.in"
 
 
+# ---------------------------------------------------------
+# SEARCH RBI DATABASE
+# ---------------------------------------------------------
+
 @st.cache_data(ttl=3600, show_spinner=False)
-def get_rbi_tables():
+def search_rbi(query):
 
     response = requests.get(
-        f"{RBI_API}/api/tables",
+        f"{RBI_API}/api/search",
+        params={"q": query},
         timeout=30
     )
 
@@ -100,104 +105,57 @@ def get_rbi_tables():
 
 
 # ---------------------------------------------------------
-# CONNECT TO RBI
-# ---------------------------------------------------------
-
-try:
-
-    tables_response = get_rbi_tables()
-
-    if isinstance(tables_response, dict):
-
-        if "data" in tables_response:
-            tables = tables_response["data"]
-
-        elif "tables" in tables_response:
-            tables = tables_response["tables"]
-
-        else:
-            tables = tables_response
-
-    else:
-        tables = tables_response
-
-    tables_df = pd.DataFrame(tables)
-
-except Exception as e:
-
-    st.error("Unable to connect to the RBI DBIE API.")
-
-    st.code(str(e))
-
-    st.stop()
-
-
-# ---------------------------------------------------------
-# SEARCH RBI TABLE CATALOGUE
-# ---------------------------------------------------------
-
-def find_table(keyword):
-
-    if tables_df.empty:
-        return None
-
-    text_columns = []
-
-    for column in tables_df.columns:
-
-        if tables_df[column].dtype == "object":
-
-            text_columns.append(
-                tables_df[column]
-                .fillna("")
-                .astype(str)
-                .str.lower()
-            )
-
-    if not text_columns:
-        return None
-
-    combined = text_columns[0]
-
-    for column_values in text_columns[1:]:
-        combined = combined + " " + column_values
-
-    matches = tables_df[
-        combined.str.contains(
-            keyword.lower(),
-            na=False
-        )
-    ]
-
-    if len(matches) == 0:
-        return None
-
-    return matches.iloc[0]
-
-
-# ---------------------------------------------------------
 # INDICATORS
 # ---------------------------------------------------------
 
-keywords = {
-    "CPI Inflation": "consumer price",
+searches = {
     "GDP": "gross domestic product",
+    "CPI Inflation": "consumer price",
     "Repo Rate": "repo rate",
-    "Exchange Rate": "usd inr",
+    "Exchange Rate": "exchange rate",
     "Foreign Exchange Reserves": "foreign exchange reserves",
-    "10Y Government Bond": "10 year government",
-    "IIP": "industrial production"
+    "Industrial Production": "industrial production"
 }
 
 
 discovered_tables = {}
 
-for name, keyword in keywords.items():
 
-    result = find_table(keyword)
+# ---------------------------------------------------------
+# SEARCH FOR EACH INDICATOR
+# ---------------------------------------------------------
 
-    if result is not None:
-        discovered_tables[name] = result
+for indicator, query in searches.items():
+
+    try:
+
+        result = search_rbi(query)
+
+        # Handle different possible API response structures
+        if isinstance(result, dict):
+
+            if "data" in result:
+                matches = result["data"]
+
+            elif "results" in result:
+                matches = result["results"]
+
+            elif "tables" in result:
+                matches = result["tables"]
+
+            else:
+                matches = result
+
+        else:
+            matches = result
+
+        if isinstance(matches, list) and len(matches) > 0:
+
+            # Keep the first useful result
+            discovered_tables[indicator] = matches[0]
+
+    except Exception:
+        pass
 
 
 # ---------------------------------------------------------
@@ -231,7 +189,7 @@ with col3:
 
 
 # ---------------------------------------------------------
-# RBI TABLES
+# RBI DATA CATALOGUE
 # ---------------------------------------------------------
 
 st.divider()
@@ -242,16 +200,37 @@ if discovered_tables:
 
     display_rows = []
 
-    for name, row in discovered_tables.items():
+    for indicator, result in discovered_tables.items():
 
-        row_dict = row.to_dict()
+        if isinstance(result, dict):
+
+            title = (
+                result.get("title")
+                or result.get("name")
+                or result.get("label")
+                or "RBI dataset"
+            )
+
+            schema = result.get("schema", "")
+            table = result.get("table", "")
+
+            if schema and table:
+                table_name = f"{schema}/{table}"
+            else:
+                table_name = result.get(
+                    "path",
+                    table or "Available dataset"
+                )
+
+        else:
+
+            title = str(result)
+            table_name = "Available dataset"
 
         display_rows.append({
-            "Indicator": name,
-            "RBI table": row_dict.get(
-                "title",
-                row_dict.get("name", "Found")
-            )
+            "Indicator": indicator,
+            "RBI dataset": title,
+            "Table": table_name
         })
 
     display_df = pd.DataFrame(display_rows)
@@ -265,13 +244,13 @@ if discovered_tables:
 else:
 
     st.warning(
-        "The RBI API is reachable, but the desired "
-        "indicator tables could not be identified."
+        "The RBI API is reachable, but no matching datasets "
+        "were returned."
     )
 
 
 # ---------------------------------------------------------
-# PROJECT STATUS
+# WHAT THIS PROJECT DOES
 # ---------------------------------------------------------
 
 st.divider()
@@ -280,7 +259,8 @@ st.subheader("What this project does")
 
 features = [
     "Connects directly to the RBI DBIE public API",
-    "Discovers relevant macroeconomic datasets",
+    "Searches the RBI catalogue for major macroeconomic indicators",
+    "Identifies relevant RBI datasets",
     "Caches API responses for one hour",
     "Allows manual data refresh",
     "Shows the current RBI data connection status"
