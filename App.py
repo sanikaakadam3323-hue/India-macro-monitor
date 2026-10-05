@@ -1,11 +1,11 @@
 import streamlit as st
-import pandas as pd
 import requests
 import re
+from bs4 import BeautifulSoup
 from datetime import datetime
 
 # =========================================================
-# PAGE CONFIG
+# PAGE
 # =========================================================
 
 st.set_page_config(
@@ -32,17 +32,42 @@ h1 {
 }
 
 .subtitle {
-    color: #666;
+    color: #777;
     font-size: 17px;
     margin-bottom: 25px;
 }
 
-[data-testid="stMetricValue"] {
-    font-size: 28px;
+.metric-card {
+    padding: 20px;
+    border: 1px solid #e5e5e5;
+    border-radius: 12px;
+    background: white;
+    min-height: 145px;
+}
+
+.metric-title {
+    font-size: 14px;
+    color: #666;
+    margin-bottom: 8px;
+}
+
+.metric-value {
+    font-size: 30px;
+    font-weight: 700;
+}
+
+.metric-change {
+    font-size: 14px;
+    margin-top: 7px;
+}
+
+.section {
+    margin-top: 30px;
 }
 
 </style>
 """, unsafe_allow_html=True)
+
 
 # =========================================================
 # HEADER
@@ -52,8 +77,8 @@ st.title("🇮🇳 India Macro Monitor")
 
 st.markdown(
     '<div class="subtitle">'
-    "India's economic pulse — inflation, growth, rates, currency "
-    "and external stability"
+    "India's economic pulse — growth, inflation, rates, "
+    "currency and external stability"
     "</div>",
     unsafe_allow_html=True
 )
@@ -61,6 +86,7 @@ st.markdown(
 st.caption(
     "Source: Reserve Bank of India — Database on Indian Economy (DBIE)"
 )
+
 
 # =========================================================
 # SIDEBAR
@@ -71,446 +97,272 @@ with st.sidebar:
     st.header("Monitor")
 
     st.write(
-        "Track India's major macroeconomic indicators "
-        "from RBI's Database on Indian Economy."
+        "A simple macroeconomic dashboard tracking "
+        "India's key economic indicators."
     )
 
-    if st.button("🔄 Refresh data", use_container_width=True):
+    if st.button(
+        "🔄 Refresh data",
+        use_container_width=True
+    ):
         st.cache_data.clear()
         st.rerun()
 
     st.divider()
 
-    st.write("**Source**")
+    st.write("**Data source**")
     st.write("RBI DBIE")
 
-    st.write("**Data refresh**")
-    st.write("Every 60 minutes")
-
-# =========================================================
-# API
-# =========================================================
-
-API = "https://data-api.dbie.rbihub.in"
+    st.write("**Refresh**")
+    st.write("Every 15 minutes")
 
 
 # =========================================================
-# GENERIC API FUNCTIONS
+# RBI HOME PAGE
 # =========================================================
 
-@st.cache_data(ttl=3600, show_spinner=False)
-def search_tables(query):
+RBI_URL = "https://dbie.rbihub.in/"
 
-    r = requests.get(
-        f"{API}/api/tables",
-        params={"q": query},
-        timeout=30
+
+@st.cache_data(ttl=900)
+def get_rbi_page():
+
+    response = requests.get(
+        RBI_URL,
+        timeout=30,
+        headers={
+            "User-Agent":
+            "Mozilla/5.0 "
+            "(Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 "
+            "(KHTML, like Gecko) "
+            "Chrome/140 Safari/537.36"
+        }
     )
 
-    r.raise_for_status()
+    response.raise_for_status()
 
-    data = r.json()
-
-    if isinstance(data, dict):
-
-        if "data" in data:
-            return data["data"]
-
-        if "tables" in data:
-            return data["tables"]
-
-        if "results" in data:
-            return data["results"]
-
-    if isinstance(data, list):
-        return data
-
-    return []
-
-
-@st.cache_data(ttl=3600, show_spinner=False)
-def get_table(schema, table):
-
-    r = requests.get(
-        f"{API}/api/tables/{schema}/{table}",
-        timeout=30
-    )
-
-    r.raise_for_status()
-
-    return r.json()
-
-
-@st.cache_data(ttl=3600, show_spinner=False)
-def get_rows(schema, table):
-
-    r = requests.get(
-        f"{API}/api/tables/{schema}/{table}/rows",
-        params={
-            "limit": 500,
-            "order": "period desc",
-            "labels": 1
-        },
-        timeout=30
-    )
-
-    r.raise_for_status()
-
-    data = r.json()
-
-    if isinstance(data, dict):
-
-        if "data" in data:
-            return data["data"]
-
-        if "rows" in data:
-            return data["rows"]
-
-    if isinstance(data, list):
-        return data
-
-    return []
+    return response.text
 
 
 # =========================================================
-# HELPERS
+# EXTRACT TEXT
 # =========================================================
 
-def clean_name(value):
+try:
 
-    if value is None:
-        return ""
+    html = get_rbi_page()
 
-    return str(value).lower()
-
-
-def find_best_table(search_terms):
-
-    candidates = []
-
-    for term in search_terms:
-
-        try:
-            results = search_tables(term)
-
-            for result in results:
-
-                if not isinstance(result, dict):
-                    continue
-
-                title = clean_name(
-                    result.get("title")
-                    or result.get("name")
-                    or ""
-                )
-
-                score = 0
-
-                for keyword in search_terms:
-
-                    if keyword.lower() in title:
-                        score += 1
-
-                candidates.append(
-                    (score, result)
-                )
-
-        except Exception:
-            continue
-
-    if not candidates:
-        return None
-
-    candidates.sort(
-        key=lambda x: x[0],
-        reverse=True
+    soup = BeautifulSoup(
+        html,
+        "html.parser"
     )
 
-    return candidates[0][1]
-
-
-def get_schema_table(result):
-
-    if not isinstance(result, dict):
-        return None, None
-
-    schema = (
-        result.get("schema")
-        or result.get("schema_name")
+    page_text = soup.get_text(
+        " ",
+        strip=True
     )
 
-    table = (
-        result.get("table")
-        or result.get("table_name")
+except Exception as e:
+
+    st.error(
+        "Unable to connect to the RBI DBIE website."
     )
 
-    return schema, table
+    st.code(str(e))
+
+    st.stop()
 
 
-def find_period_column(df):
+# =========================================================
+# EXTRACT INDICATORS
+# =========================================================
 
-    possible = [
-        "period",
-        "date",
-        "month",
-        "year",
-        "quarter",
-        "time"
-    ]
+def extract(pattern, text):
 
-    for col in df.columns:
+    match = re.search(
+        pattern,
+        text,
+        re.IGNORECASE
+    )
 
-        name = clean_name(col)
-
-        if name in possible:
-            return col
-
-        if "period" in name:
-            return col
-
-        if "date" in name:
-            return col
+    if match:
+        return match.groups()
 
     return None
 
 
-def find_numeric_column(df):
-
-    excluded = [
-        "id",
-        "code",
-        "year",
-        "month",
-        "quarter",
-        "period"
-    ]
-
-    candidates = []
-
-    for col in df.columns:
-
-        name = clean_name(col)
-
-        if any(x in name for x in excluded):
-            continue
-
-        numeric = pd.to_numeric(
-            df[col],
-            errors="coerce"
-        )
-
-        count = numeric.notna().sum()
-
-        if count > 0:
-            candidates.append(
-                (count, col)
-            )
-
-    if not candidates:
-        return None
-
-    candidates.sort(
-        key=lambda x: x[0],
-        reverse=True
-    )
-
-    return candidates[0][1]
+indicators = {}
 
 
-def prepare_dataframe(rows):
+# ---------------------------------------------------------
+# POLICY REPO RATE
+# ---------------------------------------------------------
 
-    if not rows:
-        return None
-
-    df = pd.DataFrame(rows)
-
-    if df.empty:
-        return None
-
-    period_col = find_period_column(df)
-
-    if period_col is None:
-        return None
-
-    value_col = find_numeric_column(df)
-
-    if value_col is None:
-        return None
-
-    df["_period"] = pd.to_datetime(
-        df[period_col],
-        errors="coerce"
-    )
-
-    df["_value"] = pd.to_numeric(
-        df[value_col],
-        errors="coerce"
-    )
-
-    df = df.dropna(
-        subset=["_period", "_value"]
-    )
-
-    df = df.sort_values("_period")
-
-    return df
-
-
-# =========================================================
-# INDICATOR DEFINITIONS
-# =========================================================
-
-INDICATORS = {
-
-    "CPI Inflation": {
-        "search": [
-            "consumer price inflation",
-            "CPI inflation"
-        ],
-        "unit": "%",
-        "description": "Consumer price inflation, year-on-year"
-    },
-
-    "GDP Growth": {
-        "search": [
-            "gross domestic product growth",
-            "GDP growth"
-        ],
-        "unit": "%",
-        "description": "Real GDP growth"
-    },
-
-    "Repo Rate": {
-        "search": [
-            "policy repo rate",
-            "repo rate"
-        ],
-        "unit": "%",
-        "description": "RBI policy repo rate"
-    },
-
-    "10Y G-Sec": {
-        "search": [
-            "10 year government securities yield",
-            "10 year G-sec"
-        ],
-        "unit": "%",
-        "description": "10-year government security yield"
-    },
-
-    "USD/INR": {
-        "search": [
-            "US dollar Indian rupee exchange rate",
-            "USD INR exchange rate"
-        ],
-        "unit": "₹/$",
-        "description": "Indian rupee against US dollar"
-    },
-
-    "FX Reserves": {
-        "search": [
-            "foreign exchange reserves",
-            "foreign exchange reserve"
-        ],
-        "unit": "US$ bn",
-        "description": "India's foreign exchange reserves"
-    },
-
-    "Bank Credit Growth": {
-        "search": [
-            "bank credit growth",
-            "credit growth"
-        ],
-        "unit": "%",
-        "description": "Bank credit growth"
-    },
-
-    "IIP": {
-        "search": [
-            "index of industrial production",
-            "industrial production"
-        ],
-        "unit": "Index",
-        "description": "Index of Industrial Production"
-    }
-}
-
-
-# =========================================================
-# LOAD DATA
-# =========================================================
-
-loaded = {}
-
-progress = st.progress(
-    0,
-    text="Loading RBI macroeconomic data..."
+repo = extract(
+    r"Policy repo rate\s+([A-Za-z]+ \d{4})\s+"
+    r"([0-9.]+%)\s+"
+    r"(.{0,80}?)(?=CPI inflation)",
+    page_text
 )
 
-total = len(INDICATORS)
+if repo:
 
-for i, (name, config) in enumerate(
-    INDICATORS.items()
-):
+    indicators["Repo Rate"] = {
+        "value": repo[1],
+        "period": repo[0],
+        "change": repo[2]
+    }
 
-    result = find_best_table(
-        config["search"]
-    )
 
-    if result is None:
-        progress.progress(
-            (i + 1) / total
-        )
-        continue
+# ---------------------------------------------------------
+# CPI
+# ---------------------------------------------------------
 
-    schema, table = get_schema_table(
-        result
-    )
+cpi = extract(
+    r"CPI inflation\s+([A-Za-z]+ \d{4})\s+"
+    r"([0-9.]+%\s*YoY)\s+"
+    r"([+-]?[0-9.]+\s*pp)",
+    page_text
+)
 
-    if not schema or not table:
-        progress.progress(
-            (i + 1) / total
-        )
-        continue
+if cpi:
 
-    try:
+    indicators["CPI Inflation"] = {
+        "value": cpi[1],
+        "period": cpi[0],
+        "change": cpi[2]
+    }
 
-        rows = get_rows(
-            schema,
-            table
-        )
 
-        df = prepare_dataframe(
-            rows
-        )
+# ---------------------------------------------------------
+# GDP
+# ---------------------------------------------------------
 
-        if df is not None and not df.empty:
+gdp = extract(
+    r"Real GDP growth\s+"
+    r"(Q[1-4]\s+\d{4}-\d{2})\s+"
+    r"([0-9.]+%\s*YoY)\s+"
+    r"([+-]?[0-9.]+\s*pp)",
+    page_text
+)
 
-            loaded[name] = {
-                "df": df,
-                "unit": config["unit"],
-                "description": config["description"],
-                "title": (
-                    result.get("title")
-                    or result.get("name")
-                    or name
-                ),
-                "schema": schema,
-                "table": table
-            }
+if gdp:
 
-    except Exception:
-        pass
+    indicators["Real GDP Growth"] = {
+        "value": gdp[1],
+        "period": gdp[0],
+        "change": gdp[2]
+    }
 
-    progress.progress(
-        (i + 1) / total
-    )
 
-progress.empty()
+# ---------------------------------------------------------
+# 10 YEAR G-SEC
+# ---------------------------------------------------------
+
+gsec = extract(
+    r"10-year G-sec yield\s+"
+    r"([A-Za-z]+ \d{4})\s+"
+    r"([0-9.]+%)\s+"
+    r"([+-]?[0-9.]+\s*pp)",
+    page_text
+)
+
+if gsec:
+
+    indicators["10Y G-Sec Yield"] = {
+        "value": gsec[1],
+        "period": gsec[0],
+        "change": gsec[2]
+    }
+
+
+# ---------------------------------------------------------
+# BANK CREDIT
+# ---------------------------------------------------------
+
+credit = extract(
+    r"Bank credit growth\s+"
+    r"([A-Za-z]+ \d{4})\s+"
+    r"([0-9.]+%\s*YoY)\s+"
+    r"([+-]?[0-9.]+\s*pp)",
+    page_text
+)
+
+if credit:
+
+    indicators["Bank Credit Growth"] = {
+        "value": credit[1],
+        "period": credit[0],
+        "change": credit[2]
+    }
+
+
+# ---------------------------------------------------------
+# USD / INR
+# ---------------------------------------------------------
+
+usd = extract(
+    r"USD/INR\s+"
+    r"(\d{1,2}-[A-Za-z]+-\d{4})\s+"
+    r"([0-9.]+)₹/US\$\s+"
+    r"([+-]?[0-9.]+)",
+    page_text
+)
+
+if usd:
+
+    indicators["USD / INR"] = {
+        "value": "₹" + usd[1],
+        "period": usd[0],
+        "change": usd[2]
+    }
+
+
+# ---------------------------------------------------------
+# FOREIGN EXCHANGE RESERVES
+# ---------------------------------------------------------
+
+fx = extract(
+    r"Foreign exchange reserves\s+"
+    r"(\d{1,2}-[A-Za-z]+-\d{4})\s+"
+    r"([0-9.]+)\s+US\$ bn\s+"
+    r"([+-]?[0-9.]+)",
+    page_text
+)
+
+if fx:
+
+    indicators["FX Reserves"] = {
+        "value": "$" + fx[1] + "B",
+        "period": fx[0],
+        "change": fx[2]
+    }
+
+
+# ---------------------------------------------------------
+# IMPORT COVER
+# ---------------------------------------------------------
+
+cover = extract(
+    r"Import cover\s+"
+    r"(\d{1,2}-[A-Za-z]+-\d{4})\s+"
+    r"([0-9.]+)\s+months\s+"
+    r"([+-]?[0-9.]+)",
+    page_text
+)
+
+if cover:
+
+    indicators["Import Cover"] = {
+        "value": cover[1] + " months",
+        "period": cover[0],
+        "change": cover[2]
+    }
 
 
 # =========================================================
-# STATUS
+# CONNECTION STATUS
 # =========================================================
 
 st.subheader("Dashboard status")
@@ -518,18 +370,21 @@ st.subheader("Dashboard status")
 c1, c2, c3 = st.columns(3)
 
 with c1:
+
     st.metric(
         "RBI connection",
         "Connected"
     )
 
 with c2:
+
     st.metric(
-        "Indicators loaded",
-        len(loaded)
+        "Indicators available",
+        len(indicators)
     )
 
 with c3:
+
     st.metric(
         "Last checked",
         datetime.now().strftime(
@@ -539,204 +394,127 @@ with c3:
 
 
 # =========================================================
-# MACRO SNAPSHOT
+# MAIN DASHBOARD
 # =========================================================
 
 st.divider()
 
-st.subheader("🇮🇳 Macro snapshot")
+st.subheader("🇮🇳 India Macro Snapshot")
 
-if loaded:
 
-    names = list(loaded.keys())
+# =========================================================
+# CARD DISPLAY
+# =========================================================
 
-    # Four cards per row
-    for start in range(
-        0,
-        len(names),
-        4
+names = list(indicators.keys())
+
+for start in range(
+    0,
+    len(names),
+    4
+):
+
+    cols = st.columns(4)
+
+    for i, name in enumerate(
+        names[start:start + 4]
     ):
 
-        cols = st.columns(4)
+        data = indicators[name]
 
-        for j, name in enumerate(
-            names[start:start + 4]
-        ):
+        with cols[i]:
 
-            item = loaded[name]
+            st.markdown(
+                f"""
+                <div class="metric-card">
 
-            df = item["df"]
+                <div class="metric-title">
+                {name}
+                </div>
 
-            latest = df.iloc[-1]
+                <div class="metric-value">
+                {data["value"]}
+                </div>
 
-            value = latest["_value"]
+                <div class="metric-change">
+                {data["change"]}
+                </div>
 
-            if len(df) >= 2:
-                previous = df.iloc[-2]["_value"]
-                change = value - previous
-            else:
-                previous = None
-                change = None
+                <div style="font-size:12px;color:#888;margin-top:8px;">
+                {data["period"]}
+                </div>
 
-            unit = item["unit"]
-
-            if name == "USD/INR":
-                display = f"₹{value:,.2f}"
-            elif name == "FX Reserves":
-                display = f"${value:,.1f}B"
-            elif unit == "%":
-                display = f"{value:.2f}%"
-            else:
-                display = f"{value:,.2f}"
-
-            with cols[j]:
-
-                if change is not None:
-
-                    if unit == "%":
-                        delta = f"{change:+.2f} pp"
-                    else:
-                        delta = f"{change:+.2f}"
-
-                else:
-                    delta = None
-
-                st.metric(
-                    name,
-                    display,
-                    delta
-                )
-
-                st.caption(
-                    pd.to_datetime(
-                        latest["_period"]
-                    ).strftime("%d %b %Y")
-                )
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
 
 
 # =========================================================
-# CHARTS
+# INTERPRETATION
 # =========================================================
 
 st.divider()
 
-st.subheader("📈 Economic trends")
+st.subheader("What the indicators tell you")
 
-if loaded:
 
-    for name, item in loaded.items():
+interpretations = {
 
-        df = item["df"].copy()
+    "Repo Rate":
+        "The RBI's policy interest rate. It is a key signal of the monetary-policy stance.",
 
-        chart_df = df[
-            ["_period", "_value"]
-        ].copy()
+    "CPI Inflation":
+        "Tracks consumer-price inflation and is central to the RBI's inflation-targeting framework.",
 
-        chart_df = chart_df.set_index(
-            "_period"
-        )
+    "Real GDP Growth":
+        "Shows the pace at which India's real economic output is expanding.",
 
-        chart_df.columns = [name]
+    "10Y G-Sec Yield":
+        "Reflects the market yield on a long-term Indian government security and is an important benchmark for borrowing costs.",
+
+    "Bank Credit Growth":
+        "Shows how quickly bank lending is expanding across the economy.",
+
+    "USD / INR":
+        "Shows the rupee's value against the US dollar. A higher number means a weaker rupee.",
+
+    "FX Reserves":
+        "Shows the foreign-exchange assets held by the country and provides a buffer against external shocks.",
+
+    "Import Cover":
+        "Shows approximately how many months of imports can be covered by India's foreign-exchange reserves."
+}
+
+
+for name, data in indicators.items():
+
+    if name in interpretations:
 
         st.markdown(
-            f"### {name}"
-        )
-
-        st.caption(
-            item["description"]
-        )
-
-        st.line_chart(
-            chart_df,
-            use_container_width=True
+            f"**{name}** — {interpretations[name]}"
         )
 
 
 # =========================================================
-# DATA TABLE
+# DATA SOURCE
 # =========================================================
 
 st.divider()
 
-st.subheader("📊 Latest observations")
-
-summary = []
-
-for name, item in loaded.items():
-
-    df = item["df"]
-
-    latest = df.iloc[-1]
-
-    previous = (
-        df.iloc[-2]["_value"]
-        if len(df) >= 2
-        else None
-    )
-
-    change = (
-        latest["_value"] - previous
-        if previous is not None
-        else None
-    )
-
-    summary.append({
-        "Indicator": name,
-        "Latest": round(
-            latest["_value"],
-            4
-        ),
-        "Previous": (
-            round(previous, 4)
-            if previous is not None
-            else None
-        ),
-        "Change": (
-            round(change, 4)
-            if change is not None
-            else None
-        ),
-        "Period": latest["_period"].strftime(
-            "%d %b %Y"
-        ),
-        "Unit": item["unit"]
-    })
-
-if summary:
-
-    st.dataframe(
-        pd.DataFrame(summary),
-        use_container_width=True,
-        hide_index=True
-    )
-
-else:
-
-    st.warning(
-        "No indicator observations could be loaded."
-    )
-
-
-# =========================================================
-# SOURCE INFORMATION
-# =========================================================
-
-st.divider()
-
-st.subheader("About the data")
+st.subheader("Data source")
 
 st.write(
     """
-    India Macro Monitor uses the Reserve Bank of India's
-    Database on Indian Economy (DBIE) as its primary source.
+    The dashboard reads the headline macroeconomic indicators
+    published by the Reserve Bank of India's Database on Indian
+    Economy (DBIE).
 
-    The dashboard automatically searches the RBI catalogue,
-    identifies relevant datasets, retrieves their observations,
-    and converts them into a simple macroeconomic dashboard.
+    Values are shown with the observation period supplied by DBIE.
+    The data is therefore not assumed to be real-time market data.
     """
 )
 
 st.caption(
-    "India Macro Monitor • Independent data project • "
-    "Source: Reserve Bank of India DBIE"
+    "India Macro Monitor • RBI DBIE • Independent data project"
 )
